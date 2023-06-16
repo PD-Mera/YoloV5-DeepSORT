@@ -1,0 +1,2 @@
+gdown
+tqdm @ git+https://github.com/PD-Mera/tqdm
