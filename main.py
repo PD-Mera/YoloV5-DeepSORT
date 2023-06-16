@@ -7,8 +7,6 @@ from yolov5.utils.general import (
 from yolov5.utils.torch_utils import select_device
 from yolov5.utils.dataloaders import letterbox
 
-
-
 from utils_ds.parser import get_config
 from utils_ds.draw import draw_boxes
 from deep_sort import build_tracker
@@ -24,19 +22,18 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 
-import sys
-
-
-
-
 cudnn.benchmark = True
-
 
 class VideoTracker(object):
     def __init__(self, args):
         print('Initialize DeepSORT & YOLO-V5')
         # ***************** Initialize ******************************************************
         self.args = args
+        if self.args.use_area:
+            assert len(self.args.poly_check) >= 6, "Minimum 3 points is assigned for polygon check" 
+            assert len(self.args.poly_check) % 2 == 0, "Points check is in format x1, y1, x2, y2,... and is paired" 
+            assert len(self.args.poly_alarm) >= 6, "Minimum 3 points is assigned for polygon alarm" 
+            assert len(self.args.poly_alarm) % 2 == 0, "Points alarm is in format x1, y1, x2, y2,... and is paired" 
 
         self.img_size = args.img_size                   # image size in detector, default is 640
         self.frame_interval = args.frame_interval       # frequency
@@ -51,9 +48,9 @@ class VideoTracker(object):
 
         if args.cam != -1:
             print("Using webcam " + str(args.cam))
-            self.vdo = cv2.VideoCapture(args.cam)
+            self.video = cv2.VideoCapture(args.cam)
         else:
-            self.vdo = cv2.VideoCapture()
+            self.video = cv2.VideoCapture()
 
         # ***************************** initialize DeepSORT **********************************
         cfg = get_config()
@@ -78,18 +75,18 @@ class VideoTracker(object):
         # ************************* Load video from camera *************************
         if self.args.cam != -1:
             print('Camera ...')
-            ret, frame = self.vdo.read()
+            ret, frame = self.video.read()
             assert ret, "Error: Camera error"
-            self.im_width = int(self.vdo.get(cv2.CAP_PROP_FRAME_WIDTH))
-            self.im_height = int(self.vdo.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.im_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.im_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         # ************************* Load video from file *************************
         else:
             assert os.path.isfile(self.args.input_path), "Path error"
-            self.vdo.open(self.args.input_path)
-            self.im_width = int(self.vdo.get(cv2.CAP_PROP_FRAME_WIDTH))
-            self.im_height = int(self.vdo.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            assert self.vdo.isOpened()
+            self.video.open(self.args.input_path)
+            self.im_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.im_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            assert self.video.isOpened()
             print('Done. Load video file ', self.args.input_path)
 
         # ************************* create output *************************
@@ -101,7 +98,7 @@ class VideoTracker(object):
             # create video writer
             fourcc = cv2.VideoWriter_fourcc(*self.args.fourcc)
             self.writer = cv2.VideoWriter(self.save_video_path, fourcc,
-                                          self.vdo.get(cv2.CAP_PROP_FPS), (self.im_width, self.im_height))
+                                          self.video.get(cv2.CAP_PROP_FPS), (self.im_width, self.im_height))
             print('Done. Create output file ', self.save_video_path)
 
         if self.args.save_txt:
@@ -110,7 +107,7 @@ class VideoTracker(object):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.vdo.release()
+        self.video.release()
         self.writer.release()
         if exc_type:
             print(exc_type, exc_value, exc_traceback)
@@ -121,10 +118,10 @@ class VideoTracker(object):
 
         idx_frame = 0
         last_out = None
-        while self.vdo.grab():
+        while self.video.grab():
             # Inference *********************************************************************
             t0 = time.time()
-            _, img0 = self.vdo.retrieve()
+            _, img0 = self.video.retrieve()
 
             if idx_frame % self.args.frame_interval == 0:
                 outputs, yt, st = self.image_track(img0)        # (#ID, 5) x1,y1,x2,y2,id
@@ -165,8 +162,6 @@ class VideoTracker(object):
                     for i in range(len(outputs)):
                         x1, y1, x2, y2, idx = outputs[i]
                         f.write('{}\t{}\t{}\t{}\t{}\n'.format(x1, y1, x2, y2, idx))
-
-
 
             idx_frame += 1
 
@@ -229,6 +224,9 @@ class VideoTracker(object):
 
         t3 = time.time()
         return outputs, t2-t1, t3-t2
+    
+    def check_point_in_polygon(self, point, polygon):
+        return
 
 
 if __name__ == '__main__':
@@ -240,6 +238,9 @@ if __name__ == '__main__':
     parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--save_txt', default='output/predict/', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument("--use_area", action="store_true")
+    parser.add_argument('--poly_check', nargs='+', type=int, default=[0, 0, 10, 0, 10, 10], help='polygon for check area')
+    parser.add_argument('--poly_alarm', nargs='+', type=int, default=[0, 0, 10, 0, 10, 10], help='polygon for alarm area')
 
     # camera only
     parser.add_argument("--display", action="store_true")
@@ -263,6 +264,6 @@ if __name__ == '__main__':
     args.img_size = check_img_size(args.img_size)
     print(args)
 
-    with VideoTracker(args) as vdo_trk:
-        vdo_trk.run()
+    with VideoTracker(args) as video_trk:
+        video_trk.run()
 
