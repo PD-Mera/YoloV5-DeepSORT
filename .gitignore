@@ -1,6 +1,7 @@
 __pycache__/
 
 output/
+yolov5/
 
 *.pt
 deep_sort/deep/checkpoint/ckpt.t7

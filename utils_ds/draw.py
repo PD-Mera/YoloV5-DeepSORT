@@ -12,8 +12,10 @@ def compute_color_for_labels(label):
     return tuple(color)
 
 
-def draw_boxes(img, bbox, identities=None, offset=(0,0)):
+def draw_boxes(img, bbox, identities=None, offset=(0,0), skip_index=[]):
     for i,box in enumerate(bbox):
+        if i in skip_index:
+            continue
         x1,y1,x2,y2 = [int(i) for i in box]
         x1 += offset[0]
         x2 += offset[0]

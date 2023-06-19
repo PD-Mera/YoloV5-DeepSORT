@@ -1,0 +1,2 @@
+python main.py --input_path /media/mera/Mera/AI/DATN/video/capture_0.avi --display --classes 2 3 5 6 7 \
+               --use_area --poly_check 0 1046 2556 1331 2556 1920 0 1920 --poly_alarm 0 773 2556 1022 2556 1331 0 1046

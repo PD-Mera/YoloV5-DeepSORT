@@ -34,6 +34,8 @@ class VideoTracker(object):
             assert len(self.args.poly_check) % 2 == 0, "Points check is in format x1, y1, x2, y2,... and is paired" 
             assert len(self.args.poly_alarm) >= 6, "Minimum 3 points is assigned for polygon alarm" 
             assert len(self.args.poly_alarm) % 2 == 0, "Points alarm is in format x1, y1, x2, y2,... and is paired" 
+            self.polygon_check = self.create_polygon(args.poly_check) 
+            self.polygon_alarm = self.create_polygon(args.poly_alarm) 
 
         self.img_size = args.img_size                   # image size in detector, default is 640
         self.frame_interval = args.frame_interval       # frequency
@@ -123,6 +125,8 @@ class VideoTracker(object):
             t0 = time.time()
             _, img0 = self.video.retrieve()
 
+            
+
             if idx_frame % self.args.frame_interval == 0:
                 outputs, yt, st = self.image_track(img0)        # (#ID, 5) x1,y1,x2,y2,id
                 last_out = outputs
@@ -133,13 +137,32 @@ class VideoTracker(object):
                 outputs = last_out  # directly use prediction in last frames
             t1 = time.time()
             avg_fps.append(t1 - t0)
+            
 
             # post-processing ***************************************************************
+            if self.args.use_area:
+                self.visualize_polygon(img0, self.polygon_check, color = (0, 255, 0))
+                self.visualize_polygon(img0, self.polygon_alarm, color = (0, 0, 255))
+
+            skip_index = []
+
             # visualize bbox  ********************************
             if len(outputs) > 0:
                 bbox_xyxy = outputs[:, :4]
                 identities = outputs[:, -1]
-                img0 = draw_boxes(img0, bbox_xyxy, identities)  # BGR
+
+                if self.args.use_area:
+                    for i,box in enumerate(bbox_xyxy):
+                        xc = int((box[0] + box[2]) / 2)
+                        yc = int((box[1] + box[3]) / 2)
+
+                        if self.check_point_in_polygon((xc, yc), self.polygon_check) or self.check_point_in_polygon((xc, yc), self.polygon_alarm):
+                            pass
+                        else:
+                            skip_index.append(i)
+
+
+                img0 = draw_boxes(img0, bbox_xyxy, identities, skip_index=skip_index)  # BGR
 
                 # add FPS information on output video
                 text_scale = max(1, img0.shape[1] // 1600)
@@ -225,8 +248,18 @@ class VideoTracker(object):
         t3 = time.time()
         return outputs, t2-t1, t3-t2
     
+    def create_polygon(self, polygon_list):
+        return np.array(polygon_list).reshape((-1, 1, 2))
+
+    def visualize_polygon(self, img, polygon, color = (0, 255, 0), thickness = 2):
+        cv2.polylines(img, [polygon], True, color, thickness)
+
     def check_point_in_polygon(self, point, polygon):
-        return
+        result = cv2.pointPolygonTest(polygon, point, False)
+        if result != -1:
+            return True
+        else:
+            return False
 
 
 if __name__ == '__main__':
